@@ -285,6 +285,7 @@ OKI_LENGTH = 0x20000
 OKI_Pointer_section_length = 0x400 #Data set aside for Pointer data, actual Sample data starts after this
 #OKI_ROM = bytearray(OKI_LENGTH)
 OKI_ROM = bytearray([0xff]*OKI_LENGTH)
+OKI_ROM[0:8] = 0x0000000000000000.to_bytes(8,"big") #Ensures first Pointers are blank
 
 sample_pointer_start = OKI_Pointer_section_length #Value containing Pointer to Sample data
 sample_pointer_end = 0
@@ -303,6 +304,7 @@ for i in range(0,len(pcmnames),1):
     sample_pointer_curosr += 3
     OKI_ROM[sample_pointer_curosr:sample_pointer_curosr+3] = sample_pointer_end.to_bytes(3,"big")
     sample_pointer_curosr += 3
+    OKI_ROM[sample_pointer_curosr:sample_pointer_curosr+2] = 0x0000.to_bytes(2,"big") #Set ramaining bytes to 0x00
     sample_pointer_curosr += 2 #Last 2 bytes are empty so ignore them
 
 #Write Sample data to ROM
