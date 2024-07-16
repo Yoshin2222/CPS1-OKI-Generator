@@ -33,11 +33,12 @@ if not os.path.exists(output_path):
 def evaluate_input_wavs():
     names = {}
     index = 0
+    print("======== INPUT WAV FILES ========")
     for filename in glob.glob(os.path.join(input_path, '*.wav')):
         path = os.path.join(os.getcwd(), filename)
         outpath = filename.replace(input_path,output_path,1)
         with open(os.path.join(os.getcwd(), filename), 'r') as f: # open in readonly mode
-            print(filename," - ", outpath)
+            print(filename,"\t - SIZE = ", os.path.getsize(filename),"  = ", hex(os.path.getsize(filename))," bytes")
             names.update({index : filename})
             index += 1
     return names
@@ -75,82 +76,130 @@ def to_array16(table):
 
 #In order to properly compress, we need to ensure the format of the WAV file matches certain parameters
 def format_PCM(table,name):
+    cursor = 0
     debug = 1
     # Parse Header
-    ChunkID = int.from_bytes(table[0:4], byteorder='big')
+    ChunkID = int.from_bytes(table[cursor:cursor+4], byteorder='big')
     if ChunkID != 0x52494646: #Hex representation of "RIFF"
         close_program("ERROR 1: No RIFF Identifier",name,ChunkID)
     if debug == 1:
         print("VALID 'RIFF' - \t\t\t", hex(ChunkID))
+    cursor += 4
 
-    ChunkSize = int.from_bytes(table[4:8], byteorder='little')
+    ChunkSize = int.from_bytes(table[cursor:cursor+4], byteorder='little')
     if ChunkSize != len(table) - 8:
         close_program("ERROR 2: Invalid ChunkSize",name,ChunkSize)
     if debug == 1:
         print("VALID CHUNKSIZE - \t\t", hex(ChunkSize))
+    cursor += 4
 
-    Format = int.from_bytes(table[8:12], byteorder='big')
+    Format = int.from_bytes(table[cursor:cursor+4], byteorder='big')
     if Format != 0X57415645: #Hex representation of "WAVE"
         close_program("ERROR 3: Bad WAVE Format",name,Format)
     if debug == 1:
         print("VALID WAVE FORMAT - \t\t", hex(Format))
+    cursor += 4
 
     #Now parse "fmt" chunk
-    data = table[12:len(table)]
+    data = table[cursor:len(table)]
+    cursor = 0
 
-    Subchunk1ID = int.from_bytes(data[0:4], byteorder='big')
+    Subchunk1ID = int.from_bytes(data[cursor:cursor+4], byteorder='big')
     if Subchunk1ID != 0x666D7420: #Hex representation of "fmt "
         close_program("ERROR 4: Invalid Subchunk FMT",name,Subchunk1ID)
     if debug == 1:
         print("VALID SUBCHUNK ID FORMAT - \t", hex(Subchunk1ID))
+    cursor += 4
 
-    Subchunk1Size = int.from_bytes(data[4:8], byteorder='little')
+    Subchunk1Size = int.from_bytes(data[cursor:cursor+4], byteorder='little')
     if Subchunk1Size != 0x00000010:
         close_program("ERROR 5: Invalid Subchunk Size",name, Subchunk1Size)
     if debug == 1:
         print("VALID SUBCHUNK SIZE - \t\t", hex(Subchunk1Size))
+    cursor += 4
 
-    AudioFormat = int.from_bytes(data[8:10], byteorder='little')
+    AudioFormat = int.from_bytes(data[cursor:cursor+2], byteorder='little')
     if AudioFormat != 0x00000001:
         close_program("ERROR 6: Invalid Audio Format",name, AudioFormat)
     if debug == 1:
         print("VALID AUDIO FORMAT - \t\t", hex(AudioFormat))
+    cursor += 2
 
-    SampleRate = int.from_bytes(data[12:16], byteorder='little')
+    NumChannels  = int.from_bytes(data[cursor:cursor+2], byteorder='little')
+    if NumChannels != 0x00000001:
+        close_program("ERROR 6-2: Invalid Number of channels ",name, NumChannels)
+    if debug == 1:
+        print("VALID # OF CHANNELS- \t\t", hex(NumChannels))
+    cursor += 2
+
+    SampleRate = int.from_bytes(data[cursor:cursor+4], byteorder='little')
     if SampleRate != 7575:
         close_program("ERROR 8: Invalid Sample Rate",name, SampleRate)
     if debug == 1:
         print("VALID SAMPLE RATE - \t\t", SampleRate)
         
-    ByteRate = int.from_bytes(data[16:20], byteorder='little')
-    BlockAlign = int.from_bytes(data[20:22], byteorder='little')
+    cursor += 4
 
-    BitsPerSample = int.from_bytes(data[22:24], byteorder='little')
+    ByteRate = int.from_bytes(data[cursor:cursor+4], byteorder='little')
+    cursor += 4
+    BlockAlign = int.from_bytes(data[cursor:cursor+2], byteorder='little')
+    cursor += 2
+
+    BitsPerSample = int.from_bytes(data[cursor:cursor+2], byteorder='little')
     if BitsPerSample != 0X00000010:
         close_program("ERROR 9: Unexpected Bits per Sample",name, BitsPerSample)
     if debug == 1:
         print("VALID BITS PER SAMPLE - \t", hex(BitsPerSample))
 
-    data = data[24:len(data)]
+    cursor += 2
 
-    chunkName = int.from_bytes(data[0:4], byteorder='big')
+    data = data[cursor:len(data)]
+    cursor = 0
+
+    chunkName = int.from_bytes(data[cursor:cursor+4], byteorder='big')
     if chunkName != 0x64617461: #Hex representation of "data"
         close_program("ERROR 10: Invalid Chunkname",name,chunkName)
     if debug == 1:
         print("VALID CHUNKNAME - \t\t", hex(chunkName))
-        
-    datalength = int.from_bytes(data[4:8], byteorder='little')
-#    print("Data Length = ", hex(datalength), " - ", datalength, " bytes")
+    cursor += 4
 
-    payload = data[8:len(data)]
+    datalength = int.from_bytes(data[cursor:cursor+4], byteorder='little')
+#    print("Data Length = ", hex(datalength), " - ", datalength, " bytes")
+#    if debug == 1:
+#        print("DATA - ",data[0:8])
+#        time.sleep(2)
+    cursor += 4
+    payload = data[cursor:len(data)]
+    cursor = 0
+#OPTIMIZE PAYLOAD BY TIGHTENING IT TO ACTUAL DATA
+    while payload[cursor] == 0:
+        cursor += 1
+    payload = payload[cursor:len(payload)]
+    cursor = 0
+#SCAN PAYLOAD FOR 0x00000000, assume this is silence and thus the real end of sound data
+    while cursor+4 < len(payload):        
+        if int.from_bytes(payload[cursor:cursor+4], byteorder='little') == 0x00000000:
+            payload = payload[0:cursor]
+            cursor += len(payload) #break out of loop
+        else:
+            cursor += 4
+
+    if debug == 1:
+        print("PAYLOAD - ",payload[0:8]," - ",payload[0:8])
+        print("TABLE - ",len(table)," - ",table[0:8])
+        print("DATA - ",len(data)," - ",data[0:8])
+        print("PAYLOAD - ",len(payload)," - ",payload[0:8])
+        time.sleep(2)
+
 
     #Repeat last byte if needed to ensure an Even number of bytes
     if len(payload)%2 == 1:
-        payload.append(payload,payload[len(payload -1)])
+#        payload.append(payload,payload[len(payload -1)])
+        payload.update[len(payload)+1, payload[len(payload -1)]]
 
     wav_data = to_array16(payload)
-#    if len(wav_data)&2 != 0:
-#        wav_data = wav_data[:len(wav_data)-1]
+    if len(wav_data)&2 != 0:
+        wav_data = wav_data[0:len(wav_data)-1]
 
     return wav_data
 
@@ -178,7 +227,7 @@ def compress_sample(table):
     for i in range(0,length,2):
         #First, snag 16-Bit Sample from Source file
         original_sample = int.from_bytes(table[i:i+2], byteorder='big',signed = "false")
-        original_sample += 0xFFFF>>1 #(stepsizetable[len(stepsizetable)-1])-1
+        original_sample += (0x10000>>1)#-(0x10000>>2) #(stepsizetable[len(stepsizetable)-1])-1
         original_sample >>= 3 #Algo uses 12-bit Input
 
         difference = original_sample - predicted_sample #Find difference from predicted sample
@@ -197,16 +246,17 @@ def compress_sample(table):
             mask >>= 1
         #Store 4-Bit Newsample
         if (i & 2):
-            finalsample = finalsample << 4
-            finalsample += newsample
+            finalsample = 0
+            msb = msb << 4
+            lsb = newsample &0x0f
+            finalsample ^= msb + lsb
 #            finalsample = finalsample << 4
 #            finalsample += newsample
             newtable[final_index] = finalsample
 #            print("Final Byte = ", hex(finalsample)," - ", bin(finalsample))
             final_index += 1
-            finalsample = 0
         else:
-            finalsample += newsample
+            msb = newsample&0x0f
 
         #Compute New_Sample estimate using predicted_Sample
         difference = 0
@@ -233,6 +283,7 @@ def compress_sample(table):
             index = 0
         elif (index > len(stepsizetable)-1):
             index = len(stepsizetable)-1
+#        print("INDEX - ", index)
         stepsize = stepsizetable[index]
 
     print("COMPRESSED LENGTH = ", hex(len(newtable)), " - ", len(newtable), " Bytes")
@@ -322,14 +373,23 @@ with open(OKI_NAME,"wb") as out:
     out.write(bytes(OKI_ROM))
 
 totalspace = 0
+outinfo = "- OKI ROM INFO -\n"
 #Display Sample info
 for i in range(0,len(pcmnames),1):
     printname = pcmnames[i].replace(input_path,"- ",1)
-    printstr = str("{} - {} - {} - bytes ").format(printname,hex(len(compressed_data[i])),len(compressed_data[i]))
+    printstr = str("{}\t - {} - {} - bytes ").format(printname,hex(len(compressed_data[i])),len(compressed_data[i]))
     totalspace += len(compressed_data[i])
     print(printstr)
+    outinfo += printstr + "\n"
 remainder = OKI_LENGTH-totalspace
-print(str("TOTAL SPACE USED = {} of {} - {}/{} - {}/{} bytes remaining").format(totalspace,OKI_LENGTH,hex(totalspace),hex(OKI_LENGTH),hex(remainder),remainder))
+outinfo += "\n"
+printstr = str("TOTAL SPACE USED = {} of {} - {}/{} - {}/{} bytes remaining").format(totalspace,OKI_LENGTH,hex(totalspace),hex(OKI_LENGTH),hex(remainder),remainder)
+outinfo += printstr + "\n"
+print(printstr)
+printstr = str("TOTAL SAMPLES USED = {} of {}").format(len(pcmnames),(OKI_Pointer_section_length>>2)-1)
+print(printstr)
+outinfo += printstr + "\n"
 
-print(str("TOTAL SAMPLES USED = {} of {}").format(len(pcmnames),(OKI_Pointer_section_length>>2)-1))
-
+info_name = "OKI_ROM_INFO.txt"
+with open(info_name,"w") as out:
+    out.write(outinfo)
